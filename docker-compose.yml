@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports: ["8000:8000"]
+    env_file: [{ path: .env, required: false }]
+    environment:
+      LEDGER_PATH: /data/quota_ledger.jsonl
+    volumes: ["ledger:/data"]
+    restart: unless-stopped
+volumes:
+  ledger:
