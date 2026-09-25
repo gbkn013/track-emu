@@ -208,6 +208,27 @@ def _position_from_live(
     )
 
 
+def _position_from_timetable(stops: list[StopEta], now: datetime) -> Position:
+    """Where the run *should* be per the timetable. Always ``estimated=True``: it is
+    a schedule interpolation, never an instrumented position (§6.4)."""
+    prev: StopEta | None = None
+    for s in stops:
+        if s.eta > now:
+            if prev is None:
+                return Position(kind=PositionKind.NOT_STARTED)
+            span = (s.eta - prev.eta).total_seconds()
+            progress = (now - prev.eta).total_seconds() / span if span > 0 else None
+            return Position(
+                kind=PositionKind.BETWEEN,
+                prev_station=prev.station_code,
+                next_station=s.station_code,
+                progress=progress,
+                estimated=True,
+            )
+        prev = s
+    return Position(kind=PositionKind.UNKNOWN)
+
+
 def _route_by_seq(live: LiveRun) -> dict[int, RouteStop]:
     return {rs.seq: rs for rs in live.route}
 
@@ -288,11 +309,13 @@ def compute_run_eta(
         delay: int | None = None
         estimated = False
 
-        if rs is not None and rs.actual_arrival is not None:
-            eta = in_ist(rs.actual_arrival)
+        # The origin has no arrival: its recorded departure is its actual.
+        recorded = rs.actual_arrival if rs is not None else None
+        if rs is not None and recorded is None and stop.arr_offset_min is None:
+            recorded = rs.actual_departure
+        if rs is not None and recorded is not None:
+            eta = in_ist(recorded)
             source = EtaSource.ACTUAL
-            if rs.scheduled_arrival:
-                delay = _delay_min(eta, in_ist(rs.scheduled_arrival))
         elif rs is not None and rs.delay_minutes is not None:
             eta = sched_arr + timedelta(minutes=rs.delay_minutes)
             source = EtaSource.LIVE_REPORTED
@@ -359,7 +382,7 @@ def compute_run_eta(
         elif stops and now > stops[-1].eta:
             position = Position(kind=PositionKind.TERMINATED)
         else:
-            position = Position(kind=PositionKind.UNKNOWN)
+            position = _position_from_timetable(stops, now)
         data_mode = DataMode.SCHEDULED
     else:
         if live.status.value == "cancelled":

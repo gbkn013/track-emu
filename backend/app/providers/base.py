@@ -37,6 +37,13 @@ class ProviderError(RuntimeError):
         self.status = status
 
 
+class NoLiveData(ProviderError):
+    """This provider has no live data (static timetable source)."""
+
+    def __init__(self, message: str = "provider has no live data"):
+        super().__init__(message, code="no_live_data")
+
+
 class QuotaExceeded(ProviderError):
     """Upstream quota/rate limit (HTTP 429). Callers must degrade, not retry-hot."""
 
@@ -59,6 +66,8 @@ class RailDataProvider(abc.ABC):
 
     #: Stable provider id, used in responses' ``source`` field and the ledger.
     name: str = "base"
+    #: False for static-only sources (e.g. datameet): live/board calls raise NoLiveData.
+    supports_live: bool = True
 
     @abc.abstractmethod
     async def list_local_trains(self, city: str) -> list[TrainRef]:

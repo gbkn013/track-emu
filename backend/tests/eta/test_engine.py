@@ -327,3 +327,13 @@ def test_position_never_fabricates_progress():
     run = compute_run_eta(SCHEDULE, live, dt(2026, 9, 21, 6, 6), start_date=IST_DATE)
     if run.position.kind.value == "between":
         assert run.position.progress is None and run.position.estimated
+
+
+def test_schedule_only_position_is_interpolated_and_flagged_estimated():
+    # 05:30 dep MSB; TBE 05:52; at 05:41 the train should be half-way MSB->TBE.
+    run = compute_run_eta(SCHEDULE, None, dt(2026, 9, 21, 5, 41), start_date=IST_DATE)
+    p = run.position
+    assert p.kind.value == "between" and p.estimated is True
+    assert (p.prev_station, p.next_station) == ("MSB", "TBE")
+    assert p.progress == pytest.approx(0.5)
+    assert run.data_mode.value == "scheduled"
