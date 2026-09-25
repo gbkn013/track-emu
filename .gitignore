@@ -1,0 +1,31 @@
+# secrets — never commit (AGENTS.md §11)
+.env
+*.env
+!.env.example
+
+# local data: quota ledger, local DB, probe outputs (AGENTS.md §5.1: data/ gitignored)
+data/
+phase0_out/
+*.db
+*.sqlite3
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+uv.lock.bak
+
+# node / frontend
+node_modules/
+dist/
+dev-dist/
+playwright-report/
+test-results/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/
