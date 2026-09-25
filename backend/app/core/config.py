@@ -33,7 +33,6 @@ class Settings:
     train_live_ttl_s: int
     stale_after_seconds: int
     max_stale_seconds: int
-    live_overlay_max: int
     ledger_path: Path
     tile_source_url: str
     log_level: str
@@ -52,7 +51,6 @@ class Settings:
             train_live_ttl_s=int(e("TRAIN_LIVE_TTL_S", "50")),
             stale_after_seconds=int(e("STALE_AFTER_SECONDS", "300")),
             max_stale_seconds=int(e("MAX_STALE_SECONDS", "1800")),
-            live_overlay_max=int(e("LIVE_OVERLAY_MAX", "4")),
             ledger_path=Path(e("LEDGER_PATH", str(ROOT / "data" / "quota_ledger.jsonl"))),
             tile_source_url=e("TILE_SOURCE_URL", ""),
             log_level=e("LOG_LEVEL", "INFO"),

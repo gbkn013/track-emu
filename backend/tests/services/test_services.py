@@ -22,7 +22,6 @@ def settings(tmp_path, **kw) -> Settings:
     base = dict(
         Settings.load().__dict__,
         ledger_path=tmp_path / "l.jsonl",
-        live_overlay_max=4,
         monthly_request_budget=10,
     )
     base.update(kw)
@@ -75,25 +74,61 @@ async def test_departed_hidden_unless_toggled(tmp_path):
 # --- live overlay & degradation ---------------------------------------------
 
 
-async def test_live_overlay_upgrades_and_labels_source(tmp_path):
+async def test_live_overlay_is_board_first_and_labels_sources(tmp_path):
     live = FakeLive()
     svc = await make_svc(tmp_path, live)
-    # Train left MSB 12 min late (05:42); TBM (sched 06:20) not reached yet.
+    # Board(TBM) says 40001 is 7 min late at TBM (sched 06:20). One call covers all trains.
     r = await svc.journeys("TBM", "CGL", at(6, 10))
     j = r["journeys"][0]
-    assert j["delay_at_a"] == 12 and j["eta_at_a"].startswith("2026-09-21T06:32")
-    assert j["source_at_a"] == "propagated"  # carried delay is never labelled live_reported
+    assert j["delay_at_a"] == 7 and j["eta_at_a"].startswith("2026-09-21T06:27")
+    assert j["source_at_a"] == "live_reported"
+    assert j["source_at_b"] == "propagated"  # carried delay is never labelled reported
+    assert j["eta_at_b"].startswith("2026-09-21T07:17")  # 07:10 + 7
+    assert live.board_calls == 1 and live.calls == 0  # no per-train calls
     assert "railradar live" in r["source"] and r["data_mode"] != "scheduled"
-    # Boarding at the origin after its recorded departure: already gone, so hidden.
-    gone = await svc.journeys("MSB", "TBM", at(5, 50))
-    assert gone["journeys"] == []
+    # Trains the board doesn't mention stay honestly scheduled.
+    live.board_entries = []
+    svc.cache._data.clear()
+    r2 = await svc.journeys("TBM", "CGL", at(6, 10))
+    assert r2["journeys"][0]["source_at_a"] == "scheduled" and r2["data_mode"] == "scheduled"
+
+
+async def test_board_entry_for_the_other_run_date_is_not_applied(tmp_path):
+    from ...app.domain.models import BoardEntry
+
+    live = FakeLive()
+    # Board says 40001 departs at 20:00 (a different run than the 06:20 one): must not match.
+    live.board_entries = [
+        BoardEntry(
+            train_number="40001",
+            live_type="upcoming",
+            delay_minutes=5,
+            expected_departure_time=at(20, 0),
+        )
+    ]
+    svc = await make_svc(tmp_path, live)
+    r = await svc.journeys("TBM", "CGL", at(6, 10))
+    assert r["journeys"][0]["source_at_a"] == "scheduled"
 
 
 async def test_single_flight_and_ttl_cache(tmp_path):
     live = FakeLive()
     svc = await make_svc(tmp_path, live)
     await asyncio.gather(*(svc.journeys("MSB", "TBM", at(5, 25)) for _ in range(5)))
-    assert live.calls == 1  # 5 concurrent requests, one upstream call
+    assert live.board_calls == 1  # 5 concurrent requests, one upstream call
+    await svc.journeys("MSB", "TBM", at(5, 26))
+    assert live.board_calls == 1  # within TTL: served from cache
+
+
+async def test_train_detail_uses_per_train_live_only_when_opened(tmp_path):
+    live = FakeLive()
+    svc = await make_svc(tmp_path, live)
+    t = await svc.train_live("40001", at(5, 50))
+    assert (
+        live.calls == 1
+        and t["stops"][0]["eta_source"] == "actual"
+        and t["stops"][0]["delay_min"] == 12
+    )
 
 
 @pytest.mark.parametrize("err", [QuotaExceeded(retry_after_s=60), UpstreamDegraded()])
@@ -110,7 +145,7 @@ async def test_budget_exhausted_disables_live(tmp_path):
     svc.ledger.record("/x", 200, 5)
     assert svc.ledger.state() is BudgetState.EXHAUSTED
     r = await svc.journeys("MSB", "TBM", at(5, 25))
-    assert live.calls == 0 and r["data_mode"] == "scheduled" and r["live_configured"] is False
+    assert live.board_calls == 0 and r["data_mode"] == "scheduled" and r["live_configured"] is False
 
 
 async def test_board_overlay_marks_live_reported(tmp_path):

@@ -292,9 +292,17 @@ def compute_run_eta(
     stops: list[StopEta] = []
     prev_eta: datetime | None = None
     # Baseline delay to carry forward (from the last actual), for propagation.
-    baseline_delay = last_actual[1] if last_actual else None
     last_actual_seq = last_actual[2] if last_actual else None
     last_actual_time = last_actual[0] if last_actual else None
+    # Propagation anchor: the last recorded actual, else (e.g. station-board data, which
+    # reports a delay but no actual) the furthest stop with an upstream-reported delay.
+    anchor_delay = last_actual[1] if last_actual else None
+    anchor_seq = last_actual_seq
+    if last_actual is None and live is not None:
+        reported = [r for r in live.route if r.delay_minutes is not None]
+        if reported:
+            far = max(reported, key=lambda r: r.seq)
+            anchor_delay, anchor_seq = far.delay_minutes, far.seq
 
     for stop in sorted(schedule.stops, key=lambda s: s.seq):
         sched_arr = _scheduled_arrival(origin_dep, stop)
@@ -320,16 +328,12 @@ def compute_run_eta(
             eta = sched_arr + timedelta(minutes=rs.delay_minutes)
             source = EtaSource.LIVE_REPORTED
             delay = rs.delay_minutes
-        elif (
-            baseline_delay is not None
-            and last_actual_seq is not None
-            and stop.seq > last_actual_seq
-        ):
+        elif anchor_delay is not None and anchor_seq is not None and stop.seq > anchor_seq:
             # Propagate: carry the last known delay forward, allowing recovery.
             # Applies even when upstream's route[] has no row for this stop.
-            segs = stop.seq - last_actual_seq
-            recovered = min(recovery_min_per_segment * segs, max(0.0, baseline_delay))
-            eff = baseline_delay - recovered
+            segs = stop.seq - anchor_seq
+            recovered = min(recovery_min_per_segment * segs, max(0.0, anchor_delay))
+            eff = anchor_delay - recovered
             eta = sched_arr + timedelta(minutes=eff)
             source = EtaSource.PROPAGATED
             delay = int(round(eff))
@@ -357,7 +361,12 @@ def compute_run_eta(
         prev_eta = eta
 
         # Recompute displayed delay now that eta may have been clamped.
-        delay = int(round((eta - sched_arr).total_seconds() / 60.0))
+        # A purely scheduled ETA has no derivable delay: None, never a fabricated 0.
+        delay = (
+            None
+            if source is EtaSource.SCHEDULED
+            else int(round((eta - sched_arr).total_seconds() / 60.0))
+        )
 
         stops.append(
             StopEta(

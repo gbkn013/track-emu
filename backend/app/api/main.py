@@ -142,6 +142,11 @@ def create_app(
     async def train_route(request: Request, number: str):
         return await svc(request).route_geometry(_train(request, number))
 
+    @app.get("/api/v1/meta/config")
+    async def meta_config():
+        # Runtime config for the SPA (keeps TILE_SOURCE_URL server-side, per §10).
+        return {"tile_source_url": settings.tile_source_url or None}
+
     @app.get("/api/v1/meta/status")
     async def meta_status(request: Request):
         return svc(request).status()

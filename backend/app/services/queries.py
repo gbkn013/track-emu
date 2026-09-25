@@ -12,8 +12,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from ..core.config import Settings
-from ..core.timeutil import age_seconds, combine_ist, in_ist, utcnow
+from ..core.timeutil import IST, age_seconds, combine_ist, in_ist, utcnow
 from ..domain.models import (
+    BoardEntry,
     DataMode,
     LiveRun,
     RouteStop,
@@ -84,6 +85,18 @@ def align_live(live: LiveRun, schedule: TrainSchedule) -> LiveRun:
     return live.model_copy(update={"route": rows})
 
 
+BOARD_MATCH_TOLERANCE = timedelta(minutes=20)
+
+
+def _board_matches(entry: BoardEntry, scheduled: datetime) -> bool:
+    """A board row is per (train, time). The same number can be on the board for two runs
+    (e.g. either side of midnight), so require the expected time to be near ours."""
+    if entry.expected_departure_time is None or entry.delay_minutes is None:
+        return True
+    expected_here = scheduled + timedelta(minutes=entry.delay_minutes)
+    return abs(in_ist(entry.expected_departure_time) - expected_here) <= BOARD_MATCH_TOLERANCE
+
+
 def _iso(dt: datetime | None) -> str | None:
     return in_ist(dt).isoformat() if dt else None
 
@@ -102,6 +115,8 @@ def _stop_json(s: StopEta, cat: Catalogue) -> dict:
         "stale": s.stale,
         "estimated": s.estimated,
         "platform": s.platform,
+        "lat": (cat.stations[s.station_code].lat if s.station_code in cat.stations else None),
+        "lng": (cat.stations[s.station_code].lng if s.station_code in cat.stations else None),
     }
 
 
@@ -231,20 +246,45 @@ class QueryService:
         cands = self._window(cands, now, horizon_h, show_departed)
 
         live_used, stale = False, None
-        for i, (sch, d, _run, _j) in enumerate(cands[: self.s.live_overlay_max]):
-            res = await self._live_run(sch, d)
-            if res is None:
-                continue
-            live, age = res
-            run = compute_run_eta(
-                sch, live, now, start_date=d, stale_after_seconds=self.s.stale_after_seconds
-            )
-            j = journey_between(sch, run, frm, to, now=now)
-            if j is not None:
-                cands[i] = (sch, d, run, j)
-                live_used = True
-                this = age_seconds(live.last_updated_at, now) if live.last_updated_at else int(age)
-                stale = max(stale or 0, this)
+        # Board-first (§6.3.1): ONE shared call for station A covers every train.
+        board = await self._live_board(frm)
+        if board is not None:
+            live_board, age, fetched = board
+            by_num = {e.train_number: e for e in live_board.entries}
+            for i, (sch, d, run, _j) in enumerate(cands):
+                e = by_num.get(sch.number)
+                a_stop = run.stop(frm)
+                if (
+                    e is None
+                    or e.delay_minutes is None
+                    or a_stop is None
+                    or a_stop.scheduled is None
+                ):
+                    continue
+                if not _board_matches(e, a_stop.scheduled):
+                    continue
+                live = LiveRun(
+                    number=sch.number,
+                    start_date=d,
+                    is_live=True,
+                    last_updated_at=fetched,
+                    route=[
+                        RouteStop(
+                            seq=a_stop.seq,
+                            station_code=frm,
+                            delay_minutes=e.delay_minutes,
+                            platform=e.platform,
+                        )
+                    ],
+                )
+                lrun = compute_run_eta(
+                    sch, live, now, start_date=d, stale_after_seconds=self.s.stale_after_seconds
+                )
+                lj = journey_between(sch, lrun, frm, to, now=now)
+                if lj is not None:
+                    cands[i] = (sch, d, lrun, lj)
+                    live_used = True
+                    stale = max(stale or 0, age_seconds(fetched, now))
         cands = self._window(cands, now, horizon_h, show_departed)[:limit]
 
         modes = {j.data_mode for *_, j in cands}
@@ -364,19 +404,21 @@ class QueryService:
                     }
                 )
         live_used, stale = False, None
-        board = await self._live_board(code, hours)
+        board = await self._live_board(code)
         if board is not None:
-            live_board, age = board
+            live_board, age, fetched = board
             by_num = {e.train_number: e for e in live_board.entries}
             for r in rows:
                 e = by_num.get(r["number"])
-                if e is not None and e.delay_minutes is not None:
-                    sched = datetime.fromisoformat(r["scheduled"])
-                    r["delay_min"] = e.delay_minutes
-                    r["eta"] = _iso(sched + timedelta(minutes=e.delay_minutes))
-                    r["eta_source"] = "live_reported"
-                    r["platform"] = e.platform
-                    live_used, stale = True, int(age)
+                sched = datetime.fromisoformat(r["scheduled"])
+                if e is None or e.delay_minutes is None or not _board_matches(e, sched):
+                    continue
+                r["delay_min"] = e.delay_minutes
+                r["eta"] = _iso(sched + timedelta(minutes=e.delay_minutes))
+                r["eta_source"] = "live_reported"
+                r["platform"] = e.platform
+                live_used = True
+                stale = max(stale or 0, age_seconds(fetched, now))
         rows.sort(key=lambda r: r["eta"])
         mode = "scheduled" if not live_used else "partial"
         return {
@@ -388,16 +430,21 @@ class QueryService:
             "trains": rows,
         }
 
-    async def _live_board(self, code: str, hours: int) -> tuple[StationBoard, float] | None:
+    async def _live_board(self, code: str) -> tuple[StationBoard, float, datetime] | None:
+        """Shared per-station board (always the widest window: one cache entry, one call)."""
         if not self.live_enabled():
             return None
         assert self.live is not None
+        live = self.live
         c = await self.cache.get(
-            f"board:{code}:{hours}",
+            f"board:{code}",
             self._ttl(self.s.station_board_ttl_s),
-            lambda: self.live.get_station_board(code, hours),
+            lambda: live.get_station_board(code, 8),
         )
-        return (c.value, c.age()) if c else None
+        if c is None:
+            return None
+        fetched = datetime.fromtimestamp(c.fetched_wall, tz=IST)
+        return c.value, c.age(), fetched
 
     # -- status ------------------------------------------------------------ #
 

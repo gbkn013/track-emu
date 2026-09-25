@@ -56,3 +56,13 @@ def test_health_and_status_and_train_endpoints(client):
     assert client.get("/api/v1/trains/40001/live").json()["data_mode"] == "scheduled"
     assert client.get("/api/v1/trains/40001/route").json()["type"] == "LineString"
     assert client.get("/api/v1/stations?q=tb").json()["stations"][0]["code"] == "TBM"
+
+
+def test_stops_carry_coordinate_keys_for_the_map(client):
+    stop = client.get("/api/v1/trains/40001/live").json()["stops"][0]
+    assert "lat" in stop and "lng" in stop
+
+
+def test_runtime_config_exposes_tile_url_only(client):
+    cfg = client.get("/api/v1/meta/config").json()
+    assert cfg == {"tile_source_url": None}  # no secrets (e.g. API key) ever exposed here

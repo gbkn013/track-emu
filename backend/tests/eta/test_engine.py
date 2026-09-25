@@ -337,3 +337,21 @@ def test_schedule_only_position_is_interpolated_and_flagged_estimated():
     assert (p.prev_station, p.next_station) == ("MSB", "TBE")
     assert p.progress == pytest.approx(0.5)
     assert run.data_mode.value == "scheduled"
+
+
+def test_scheduled_eta_has_no_fabricated_zero_delay():
+    run = compute_run_eta(SCHEDULE, None, dt(2026, 9, 21, 5, 0), start_date=IST_DATE)
+    assert all(s.delay_min is None for s in run.stops)
+    j = journey_between(SCHEDULE, run, "MSB", "TBM")
+    assert j is not None and j.delay_at_a is None
+
+
+def test_reported_delay_without_actuals_propagates_forward():
+    """Station-board data: a reported delay at A, no recorded actual anywhere."""
+    route = [RouteStop(seq=1, station_code="TBE", delay_minutes=9)]
+    live = make_live("43501", IST_DATE, last_updated_at="2026-09-21T05:45:00+05:30", route=route)
+    run = compute_run_eta(SCHEDULE, live, dt(2026, 9, 21, 5, 46), start_date=IST_DATE)
+    assert run.stop("TBE").eta_source is EtaSource.LIVE_REPORTED
+    tbm = run.stop("TBM")
+    assert tbm.eta_source is EtaSource.PROPAGATED and tbm.eta == dt(2026, 9, 21, 6, 29)  # 06:20 + 9
+    assert run.stop("MSB").eta_source is EtaSource.SCHEDULED  # behind the anchor: no invention

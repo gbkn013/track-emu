@@ -80,6 +80,10 @@ class FakeLive(FakeStatic):
 
     def __init__(self, fail: Exception | None = None):
         self.calls = 0
+        self.board_calls = 0
+        self.board_entries = None
+        self.board_calls = 0
+        self.board_entries = None
         self.fail = fail
 
     async def get_live_run(self, n, d=None):
@@ -113,12 +117,15 @@ class FakeLive(FakeStatic):
     async def get_station_board(self, c, h=2):
         from ..app.domain.models import BoardEntry
 
-        return StationBoard(
-            code=c,
-            entries=[
+        self.board_calls += 1
+        if self.fail:
+            raise self.fail
+        entries = self.board_entries
+        if entries is None:
+            entries = [
                 BoardEntry(train_number="40001", live_type="upcoming", delay_minutes=7, platform=3)
-            ],
-        )
+            ]
+        return StationBoard(code=c, entries=entries)
 
 
 def quota_exceeded() -> QuotaExceeded:
