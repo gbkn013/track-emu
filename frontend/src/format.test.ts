@@ -1,4 +1,4 @@
-import { badgeKind, delayText, delayTone, hhmm } from "./format";
+import { badgeKind, dayHeading, delayText, delayTone, formatAgo, formatCountdown, hhmm, istDay, urgency } from "./format";
 
 describe("format", () => {
   it("renders times in IST regardless of device timezone", () => {
@@ -18,5 +18,26 @@ describe("format", () => {
     expect(badgeKind("live_reported")).toBe("live");
     expect(badgeKind("propagated")).toBe("estimated");
     expect(badgeKind("scheduled")).toBe("scheduled");
+  });
+});
+
+describe("departure countdowns (TripView style)", () => {
+  const now = Date.parse("2026-09-21T08:00:00+05:30");
+  const at = (m: number) => now + m * 60_000;
+  it("rounds down and never overstates the time left", () => {
+    expect(formatCountdown(at(0.5), now)).toBe("Now");
+    expect(formatCountdown(at(12.9), now)).toBe("12 min");
+    expect(formatCountdown(at(125), now)).toBe("2h 05m");
+    expect(formatCountdown(at(3 * 24 * 60 + 5), now)).toBe("in 3 d");
+    expect(formatAgo(at(-3), now)).toBe("3 min ago");
+    expect(formatAgo(at(-125), now)).toBe("2h 05m ago");
+  });
+  it("colours by urgency", () => {
+    expect([urgency(at(0), now), urgency(at(15), now), urgency(at(16), now)]).toEqual(["now", "soon", "later"]);
+  });
+  it("groups by IST day, across midnight", () => {
+    expect(istDay("2026-09-21T18:40:00Z")).toBe("2026-09-22"); // 00:10 IST next day
+    expect(dayHeading("2026-09-21T09:00:00+05:30", now)).toMatch(/^Today · /);
+    expect(dayHeading("2026-09-22T09:00:00+05:30", now)).toMatch(/^Tomorrow · /);
   });
 });

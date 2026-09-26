@@ -50,7 +50,7 @@ export default function TrainMap({ line, stops, position, timetableOnly, tileUrl
     const map = new maplibregl.Map({ container: el.current, style, attributionControl: { compact: true } });
     map.on("load", () => {
       map.addSource("route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: line } });
-      map.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": "#0b5cad", "line-width": 4 } });
+      map.addLayer({ id: "route", type: "line", source: "route", paint: { "line-color": "#f58220", "line-width": 4 } });
       map.addSource("stops", {
         type: "geojson",
         data: {
@@ -63,7 +63,7 @@ export default function TrainMap({ line, stops, position, timetableOnly, tileUrl
       });
       map.addLayer({
         id: "stops", type: "circle", source: "stops",
-        paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": "#0b5cad", "circle-stroke-width": 2 },
+        paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": "#f58220", "circle-stroke-width": 2 },
       });
       const bounds = coords.reduce((b, c) => b.extend(c), new maplibregl.LngLatBounds(coords[0], coords[0]));
       map.fitBounds(bounds, { padding: 32, animate: false });

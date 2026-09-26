@@ -81,6 +81,48 @@ export const en = {
     corsNote:
       "If RailRadar does not allow calls from browsers, live data will fail and the app will keep showing the timetable — it never invents live values.",
   },
+  trips: {
+    title: "Trips", edit: "Edit trips", done: "Done editing", add: "Add trip", settings: "Settings",
+    findTrain: "Find a train", stationBoard: "Station board",
+    emptyTitle: "No trips yet",
+    emptyBody: "Save the journeys you take often and see the next trains and how long until they leave — at a glance.",
+    emptyCta: "Add a trip", recent: "Recent trips",
+    removeTrip: (a: string, b: string) => `Remove trip ${a} to ${b}`,
+    removeRecent: (a: string, b: string) => `Remove ${a} to ${b} from recent trips`,
+    loadFail: "Couldn't load trains.", none: "No trains in the next 6 hours.",
+  },
+  newTrip: {
+    title: "New trip", swap: "Swap stations", same: "Origin and destination must be different.",
+    save: "Save to my trips", submit: "Show trains", placeholder: "Station name or code",
+    clear: (l: string) => `Clear ${l}`, searching: "Searching…", noStations: "No stations found",
+  },
+  trip: {
+    leavingNow: "Leaving now", leaving: (d: string) => `Leaving ${d}`, swapDir: "Swap direction",
+    saveTrip: "Save to trips", unsaveTrip: "Remove from trips", leaveAt: "Leave at…", changeTime: "Change time",
+    leaveNow: "Leave now", date: "Date", time: "Time (IST)", go: "Go", upcoming: "Upcoming",
+    earlier: "Show earlier trains", later: "Show later trains", hide: "Hide",
+    invalid: "This trip isn't valid.", choose: "Choose stations", towards: (n: string) => `Towards ${n}`,
+    arrive: "arrive", nowWord: "Now", tryAgain: "Try again", loadFail: "Couldn't load trains",
+    emptyHint: "Big cities have several stations (for example Chennai Central and Egmore). Try a different station, or the other direction.",
+    otherStations: "Choose other stations",
+  },
+  status: {
+    live: "Live", timetablePos: "Timetable position (estimated)", fullTimetable: "Stops", board: "Board", getOff: "Get off",
+    here: "Scheduled here now", hereLive: "Here now", sched: (t: string) => `sched ${t}`, notFound: "Train not found",
+  },
+  appearance: { title: "Appearance", body: "Choose your preferred theme", light: "Light", dark: "Dark", system: "System default" },
+  data: {
+    title: "Data & cache", clearRecent: "Clear recent searches", clearRecentBody: "Remove your search history",
+    clearTrips: "Clear saved trips", clearTripsBody: "Remove all trips from the home screen", clear: "Clear",
+    recentCleared: "Recent searches cleared.", tripsCleared: "Saved trips cleared.",
+    source: "Data source",
+    sourceBody: "Bundled timetable (datameet, CC0, ~2016) that works offline. Live delays only with your own RailRadar key.",
+  },
+  about: {
+    title: "About", body: "An unofficial planner for Tamil Nadu EMU/MEMU trains. Works as a static site — no server.",
+    features: ["Find trains between two stations, with ETAs at both ends", "See a train's stops and where it should be now",
+      "Station boards with arrivals and departures", "Save trips and see the next trains at a glance"],
+  },
   footer: {
     unofficial: "Unofficial — not affiliated with Indian Railways.",
     disclaimer:

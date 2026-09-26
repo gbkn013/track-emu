@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { parseHash } from "./App";
 import { DelayChip, Freshness, SourceBadge } from "./components/Common";
-import { JourneyRow } from "./components/Home";
+import { DepartureRow } from "./components/DepartureRow";
 import { positionSentence } from "./components/TrainDetail";
 import { markerPoint } from "./components/TrainMap";
 import type { Journey, Meta, Position, StopRow } from "./api";
@@ -16,6 +16,14 @@ describe("routing", () => {
     expect(parseHash("#/train/40005")).toEqual({ page: "train", number: "40005" });
     expect(parseHash("#/train/abc")).toEqual({ page: "home" });
     expect(parseHash("#/station/tbm")).toEqual({ page: "board", code: "TBM" });
+  });
+  it("parses the trip, train-segment, new and settings screens", () => {
+    expect(parseHash("#/trip/msb/tbm")).toEqual({ page: "trip", from: "MSB", to: "TBM", at: null });
+    expect(parseHash("#/trip/MSB/TBM?at=2026-09-21T08:00")).toEqual({ page: "trip", from: "MSB", to: "TBM", at: "2026-09-21T08:00" });
+    expect(parseHash("#/trip/MSB/MSB")).toEqual({ page: "home" });
+    expect(parseHash("#/train/40015/MSB/TBM")).toEqual({ page: "train", number: "40015", from: "MSB", to: "TBM" });
+    expect(parseHash("#/new")).toEqual({ page: "new" });
+    expect(parseHash("#/settings")).toEqual({ page: "settings" });
   });
 });
 
@@ -56,14 +64,15 @@ const journey: Journey = {
 };
 
 it("timetable-only row says 'Due now (timetable)', not a live 'At station' or 'On time'", () => {
-  render(<ul><JourneyRow j={{ ...journey, state_relative_to_a: "at_station", delay_at_a: 0 }} /></ul>);
+  render(<ul><DepartureRow j={{ ...journey, state_relative_to_a: "at_station", delay_at_a: 0 }} now={Date.parse("2026-09-21T07:56:30+05:30")} /></ul>);
   expect(screen.getByText("Due now (timetable)")).toBeInTheDocument();
   expect(screen.queryByText("On time")).not.toBeInTheDocument();
   expect(screen.queryByText("At station")).not.toBeInTheDocument();
 });
 
 it("journey row shows big departure time, arrival, source badge and links to the train", () => {
-  render(<ul><JourneyRow j={journey} /></ul>);
+  render(<ul><DepartureRow j={journey} now={Date.parse("2026-09-21T07:40:00+05:30")} /></ul>);
+  expect(screen.getByText("17 min").className).toContain("dep-later");
   expect(screen.getByText("07:57")).toBeInTheDocument();
   expect(screen.getByText("08:52")).toBeInTheDocument();
   expect(screen.getByText(/Scheduled/)).toBeInTheDocument();
@@ -87,4 +96,13 @@ describe("position", () => {
     expect(markerPoint({ ...between, progress: null }, stops)).toBeNull();
     expect(markerPoint({ ...between, prev_station: "ZZZ" }, stops)).toBeNull();
   });
+});
+
+it("a train that already left shows 'ago', never a due-now chip; a 'leave at' query hides state chips", () => {
+  const past = Date.parse("2026-09-21T08:00:00+05:30");
+  const { rerender } = render(<ul><DepartureRow j={{ ...journey, state_relative_to_a: "at_station" }} now={past} /></ul>);
+  expect(screen.getByText("3 min ago")).toBeInTheDocument();
+  expect(screen.queryByText("Due now (timetable)")).not.toBeInTheDocument();
+  rerender(<ul><DepartureRow j={{ ...journey, state_relative_to_a: "departed" }} now={past} hideState /></ul>);
+  expect(screen.queryByText("Due earlier (timetable)")).not.toBeInTheDocument();
 });

@@ -26,7 +26,7 @@ export function DelayChip({ delay }: { delay: number | null }) {
   );
 }
 
-export function Freshness({ meta, now = Date.now() }: { meta: Meta; now?: number }) {
+export function Freshness({ meta, now = Date.now(), compact }: { meta: Meta; now?: number; compact?: boolean }) {
   const stale = meta.stale_seconds ?? 0;
   const isStale = meta.data_mode !== "scheduled" && stale > 300;
   let text: string;
@@ -41,9 +41,9 @@ export function Freshness({ meta, now = Date.now() }: { meta: Meta; now?: number
     text = en.fresh.updated(stale || Math.max(0, Math.round((now - new Date(meta.fetched_at).getTime()) / 1000)), meta.source);
   }
   return (
-    <div className={`fresh ${tone}`} role="status">
+    <div className={`fresh ${tone}${compact ? " fresh-compact" : ""}`} role="status">
       <div>{text}</div>
-      {meta.data_mode === "scheduled" && <div className="fresh-note">{meta.timetable_note}</div>}
+      {meta.data_mode === "scheduled" && !compact && <div className="fresh-note">{meta.timetable_note}</div>}
     </div>
   );
 }

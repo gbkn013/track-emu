@@ -15,7 +15,7 @@ export default defineConfig({
         name: "TN Rail Tracker",
         short_name: "TN Rail",
         description: "Unofficial EMU/MEMU timetable and live tracker for Tamil Nadu",
-        theme_color: "#0b5cad",
+        theme_color: "#f58220",
         background_color: "#ffffff",
         display: "standalone",
         start_url: "./",

@@ -28,10 +28,21 @@ export function useRoutes() {
   }, []);
   const addRecent = useCallback((p: RoutePair) => {
     setRecent((cur) => {
-      const next = [p, ...cur.filter((x) => !same(x, p))].slice(0, 5);
+      const next = [p, ...cur.filter((x) => !same(x, p))].slice(0, 20);
       write(KEY_RECENT, next);
       return next;
     });
   }, []);
-  return { saved, recent, toggleSaved, addRecent, isSaved: (p: RoutePair) => saved.some((x) => same(x, p)) };
+  const removeSaved = useCallback((p: RoutePair) => {
+    setSaved((cur) => { const next = cur.filter((x) => !same(x, p)); write(KEY_SAVED, next); return next; });
+  }, []);
+  const removeRecent = useCallback((p: RoutePair) => {
+    setRecent((cur) => { const next = cur.filter((x) => !same(x, p)); write(KEY_RECENT, next); return next; });
+  }, []);
+  const clearSaved = useCallback(() => { write(KEY_SAVED, []); setSaved([]); }, []);
+  const clearRecent = useCallback(() => { write(KEY_RECENT, []); setRecent([]); }, []);
+  return {
+    saved, recent, toggleSaved, addRecent, removeSaved, removeRecent, clearSaved, clearRecent,
+    isSaved: (p: RoutePair) => saved.some((x) => same(x, p)),
+  };
 }

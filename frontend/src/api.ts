@@ -3,6 +3,7 @@ import { config } from "./local/config";
 import { ApiError } from "./local/errors";
 import { RailRadarClient } from "./local/railradar";
 import { QueryService } from "./local/service";
+import { combineIst, isoIst } from "./local/time";
 import { effectiveLive, loadLiveSettings, onLiveSettingsChange } from "./local/settings";
 
 export type { DataMode, EtaSource } from "./local/domain";
@@ -51,6 +52,8 @@ export { ApiError } from "./local/errors";
 
 // The "API" is now an in-browser service over the bundled timetable (no server; see
 // docs/decisions/0003-static-site.md). Method names and response shapes are unchanged.
+export interface JourneyOpts { at?: string; horizonH?: number; earlierMin?: number; limit?: number }
+
 let svcPromise: Promise<QueryService> | null = null;
 
 function applyLive(s: QueryService) {
@@ -71,11 +74,20 @@ export function service(): Promise<QueryService> {
 
 export const api = {
   stations: async (q: string) => (await service()).searchStations(q),
-  journeys: async (from: string, to: string, showDeparted: boolean): Promise<JourneysResponse> => {
+  journeys: async (from: string, to: string, showDeparted: boolean, o: JourneyOpts = {}): Promise<JourneysResponse> => {
     const s = await service();
     const a = s.checkStation(from), b = s.checkStation(to);
     if (a === b) throw new ApiError(422, "same_station", "from and to must differ");
-    return s.journeys(a, b, Date.now(), { limit: 15, showDeparted });
+    const limit = o.limit ?? 15;
+    if (o.at) {
+      // "Leave at…": a timetable query for that IST time (live delays only make sense for "now").
+      const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(o.at);
+      if (!m) throw new ApiError(422, "bad_time", "time must be YYYY-MM-DDTHH:mm");
+      const at = combineIst(m[1], Number(m[2]) * 60 + Number(m[3]));
+      const r = await s.journeys(a, b, at, { limit, horizonH: o.horizonH, earlierMin: 0, noLive: true });
+      return { ...r, fetched_at: isoIst(Date.now()) };
+    }
+    return s.journeys(a, b, Date.now(), { limit, horizonH: o.horizonH, showDeparted, earlierMin: o.earlierMin });
   },
   trains: async (q: string) => (await service()).searchTrains(q),
   trainLive: async (n: string) => (await service()).trainLive(n, Date.now()),

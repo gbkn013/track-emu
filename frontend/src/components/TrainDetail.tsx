@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { Fragment, lazy, Suspense } from "react";
 import { api, type Position, type StopRow } from "../api";
 import { en } from "../i18n/en";
-import { delayText, hhmm } from "../format";
-import { DelayChip, ErrorBox, Freshness, Loading, SourceBadge } from "./Common";
+import { dayHeading, delayText, hhmm, istDay } from "../format";
+import { DelayChip, ErrorBox, Freshness, SourceBadge } from "./Common";
+import { ScreenHeader } from "./ScreenHeader";
 
 const TrainMap = lazy(() => import("./TrainMap"));
 
@@ -27,52 +28,110 @@ export function positionSentence(p: Position, stops: StopRow[]): string {
   }
 }
 
-export function TrainDetail({ number }: { number: string }) {
+interface Props { number: string; from?: string; to?: string }
+
+/** Running status of one train: where it is, the map, and a stop-by-stop timeline. */
+export function TrainDetail({ number, from, to }: Props) {
   const q = useQuery({ queryKey: ["train", number], queryFn: () => api.trainLive(number), refetchInterval: 60_000 });
   const cfg = useQuery({ queryKey: ["config"], queryFn: api.config, staleTime: Infinity });
   const route = useQuery({ queryKey: ["route", number], queryFn: () => api.route(number), staleTime: 86_400_000 });
-  if (q.isPending) return <Loading />;
-  if (q.isError) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />;
+  const back = from && to ? `#/trip/${from}/${to}` : "#/";
+
+  if (q.isPending) {
+    return (
+      <>
+        <ScreenHeader title={`Train ${number}`} backHref={back} />
+        <div className="main" role="status" aria-label={en.loading}>
+          <div className="card pad"><div className="skeleton sk-line" /><div className="skeleton sk-line" /></div>
+        </div>
+      </>
+    );
+  }
+  if (q.isError) {
+    return (
+      <>
+        <ScreenHeader title={`Train ${number}`} backHref={back} />
+        <div className="main"><ErrorBox error={q.error} onRetry={() => q.refetch()} /></div>
+      </>
+    );
+  }
   const d = q.data;
   const timetableOnly = d.data_mode === "scheduled";
+  const fromIdx = from ? d.stops.findIndex((s) => s.station_code === from) : -1;
+  const toIdx = to ? d.stops.findIndex((s) => s.station_code === to) : -1;
+  const hasSegment = fromIdx >= 0 && toIdx > fromIdx;
+  const currentCode = d.position.kind === "at_station" ? d.position.station_code : null;
+
   return (
-    <article>
-      <h1 className="h-train">{d.number} <small>{d.kind}</small></h1>
-      <p className="muted">{d.name} · {d.from_name} → {d.to_name}</p>
-      <Freshness meta={d} />
-      <p className="position" aria-live="polite">
-        {positionSentence(d.position, d.stops)}
-        {d.position.estimated && d.position.kind === "between" && (
-          <small className="muted"> ({en.train.estimatedNote})</small>
-        )}
-      </p>
-      {d.exceptions.length > 0 && (
-        <p className="chip chip-bad">{d.exceptions.map((e) => e.type).join(", ")}</p>
-      )}
-      <section aria-label={en.train.map}>
-        <Suspense fallback={<div className="map skeleton" />}>
-          {route.data && route.data.coordinates.length > 1 ? (
-            <TrainMap line={route.data} stops={d.stops} position={d.position} timetableOnly={timetableOnly} tileUrl={cfg.data?.tile_source_url} />
-          ) : <div className="map map-empty">{en.train.mapUnavailable}</div>}
-        </Suspense>
-      </section>
-      <h2>{en.train.stops}</h2>
-      <ol className="timeline">
-        {d.stops.map((s) => (
-          <li key={s.seq} className={`stop stop-${s.state}`}>
-            <div className="stop-name">
-              <a href={`#/station/${s.station_code}`}>{s.station_name}</a>
-              {s.platform ? <small> · {en.platform(s.platform)}</small> : null}
-            </div>
-            <div className="stop-times">
-              <span className="muted" title={en.train.schedVsExpected}>{hhmm(s.scheduled)}</span>
-              <strong>{hhmm(s.eta)}</strong>
-              <DelayChip delay={s.eta_source === "scheduled" ? null : s.delay_min} />
-              <SourceBadge source={s.eta_source} />
-            </div>
-          </li>
-        ))}
-      </ol>
-    </article>
+    <>
+      <ScreenHeader
+        backHref={back}
+        title={d.name}
+        subtitle={`${d.number} · ${d.kind} · ${d.from_name} → ${d.to_name}`}
+      />
+      <main className="main">
+        <section className="card status" aria-live="polite">
+          <p className="eyebrow">
+            {!timetableOnly && <span className="live-dot" aria-hidden="true" />}
+            {timetableOnly ? en.status.timetablePos : `${en.status.live} · ${d.source}`}
+          </p>
+          <p className="status-main">{positionSentence(d.position, d.stops)}</p>
+          {d.position.estimated && d.position.kind === "between" && <p className="muted small">{en.train.estimatedNote}</p>}
+          {d.exceptions.length > 0 && <p className="chip chip-bad">{d.exceptions.map((e) => e.type).join(", ")}</p>}
+        </section>
+        <Freshness meta={d} />
+
+        <section aria-label={en.train.map} className="map-wrap">
+          <Suspense fallback={<div className="map skeleton" />}>
+            {route.data && route.data.coordinates.length > 1 ? (
+              <TrainMap line={route.data} stops={d.stops} position={d.position} timetableOnly={timetableOnly} tileUrl={cfg.data?.tile_source_url} />
+            ) : <div className="map map-empty">{en.train.mapUnavailable}</div>}
+          </Suspense>
+        </section>
+
+        <h2 className="eyebrow">{en.train.stops}</h2>
+        <ol className="tl card" aria-label={en.train.stops}>
+          {d.stops.map((s, idx) => {
+            const inSeg = !hasSegment || (idx >= fromIdx && idx <= toIdx);
+            const isBoard = hasSegment && idx === fromIdx, isAlight = hasSegment && idx === toIdx;
+            const isEnd = idx === 0 || idx === d.stops.length - 1;
+            const passed = s.state === "departed";
+            const current = s.station_code === currentCode;
+            const prev = d.stops[idx - 1];
+            const newDay = prev && istDay(s.eta) > istDay(prev.eta);
+            const late = s.eta_source !== "scheduled" && s.scheduled && s.scheduled !== s.eta;
+            return (
+              <Fragment key={s.seq}>
+                {newDay && <li aria-hidden="true" className="tl-day">{dayHeading(s.eta, Date.parse(s.eta))}</li>}
+                <li className={`tl-item${inSeg ? "" : " tl-off"}`} aria-current={current ? "step" : undefined}>
+                  <div className="tl-time">
+                    <div className="tl-eta">{hhmm(s.eta)}</div>
+                    {late && <div className="tl-sched">{en.status.sched(hhmm(s.scheduled))}</div>}
+                  </div>
+                  <div className="tl-rail" aria-hidden="true">
+                    {idx < d.stops.length - 1 && <span className={`tl-line${passed ? " tl-line-done" : inSeg && hasSegment ? " tl-line-seg" : ""}`} />}
+                    <span className={`tl-dot${isEnd || isBoard || isAlight || current ? " tl-dot-big" : ""}${current ? " tl-dot-now" : passed ? " tl-dot-done" : ""}`} />
+                  </div>
+                  <div className="tl-body">
+                    <div className="tl-name">
+                      <a className={isEnd || isBoard || isAlight ? "strong" : ""} href={`#/station/${s.station_code}`}>{s.station_name}</a>
+                      <span className="code">{s.station_code}</span>
+                      {isBoard && <span className="tag">{en.status.board}</span>}
+                      {isAlight && <span className="tag">{en.status.getOff}</span>}
+                      {current && <span className="tag tag-soft">{timetableOnly ? en.status.here : en.status.hereLive}</span>}
+                    </div>
+                    <div className="tl-chips">
+                      <DelayChip delay={s.eta_source === "scheduled" ? null : s.delay_min} />
+                      <SourceBadge source={s.eta_source} />
+                      {s.platform ? <span className="muted small">{en.platform(s.platform)}</span> : null}
+                    </div>
+                  </div>
+                </li>
+              </Fragment>
+            );
+          })}
+        </ol>
+      </main>
+    </>
   );
 }

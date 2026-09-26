@@ -157,8 +157,9 @@ export class QueryService {
 
   // -- journeys ------------------------------------------------------------------------------
 
-  async journeys(frm: string, to: string, now: number, o: { limit?: number; horizonH?: number; showDeparted?: boolean } = {}): Promise<JourneysResponse> {
-    const { limit = 10, horizonH = 6, showDeparted = false } = o;
+  async journeys(frm: string, to: string, now: number, o: { limit?: number; horizonH?: number; showDeparted?: boolean; earlierMin?: number; noLive?: boolean } = {}): Promise<JourneysResponse> {
+    const { limit = 10, horizonH = 6, showDeparted = false, noLive = false } = o;
+    const earlierMin = o.earlierMin ?? (showDeparted ? 60 : 10);
     let cands: Cand[] = [];
     const toSet = new Set(this.cat.byStation.get(to) ?? []);
     const common = [...new Set(this.cat.byStation.get(frm) ?? [])].filter((n) => toSet.has(n)).sort();
@@ -170,12 +171,12 @@ export class QueryService {
         if (j) cands.push({ sch, d, run, j });
       }
     }
-    cands = this.window(cands, now, horizonH, showDeparted);
+    cands = this.window(cands, now, horizonH, earlierMin);
 
     let liveUsed = false;
     let stale: number | null = null;
     // Board-first (§6.3.1): ONE shared call for station A covers every train.
-    const board = await this.liveBoard(frm);
+    const board = noLive ? null : await this.liveBoard(frm);
     if (board) {
       const byNum = new Map(board.board.entries.map((e) => [e.train_number, e]));
       cands.forEach((c, i) => {
@@ -196,7 +197,7 @@ export class QueryService {
         }
       });
     }
-    cands = this.window(cands, now, horizonH, showDeparted).slice(0, limit);
+    cands = this.window(cands, now, horizonH, earlierMin).slice(0, limit);
 
     const modes = new Set(cands.map((c) => c.j.data_mode));
     const mode: DataMode =
@@ -207,11 +208,13 @@ export class QueryService {
     };
   }
 
-  private window(cands: Cand[], now: number, horizonH: number, showDeparted: boolean): Cand[] {
+  /** Trains leaving A within [now - earlierMin, now + horizonH]. Only the default 10-min look-back hides
+   *  trains that have already left; a wider look-back is the user asking to see them. */
+  private window(cands: Cand[], now: number, horizonH: number, earlierMin: number): Cand[] {
     const end = now + horizonH * 60 * MIN;
-    const start = now - (showDeparted ? 60 : 10) * MIN;
+    const start = now - earlierMin * MIN;
     return cands
-      .filter((c) => c.j.eta_at_a >= start && c.j.eta_at_a <= end && (showDeparted || c.j.state_relative_to_a !== "departed"))
+      .filter((c) => c.j.eta_at_a >= start && c.j.eta_at_a <= end && (earlierMin > 10 || c.j.state_relative_to_a !== "departed"))
       .sort((a, b) => a.j.eta_at_a - b.j.eta_at_a);
   }
 
