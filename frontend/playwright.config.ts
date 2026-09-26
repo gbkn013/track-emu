@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-// Smoke tests run the real backend (static datameet timetable, no live source, no network)
-// serving the built frontend. Build first: `npm run build`.
+// Smoke tests run against the static production build (`vite preview`) — no backend, no network.
+// Build first: `npm run build`.
 export default defineConfig({
   testDir: "e2e",
   timeout: 30_000,
@@ -12,10 +12,8 @@ export default defineConfig({
     launchOptions: process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
   },
   webServer: {
-    command: "uv run uvicorn backend.app.api.main:create_app --factory --port 18766",
-    cwd: "..",
-    url: "http://127.0.0.1:18766/healthz",
-    env: { LIVE_SOURCE: "none", RAILRADAR_API_KEY: "" },
+    command: "npx vite preview --host 127.0.0.1 --port 18766 --strictPort",
+    url: "http://127.0.0.1:18766/",
     reuseExistingServer: false,
   },
 });

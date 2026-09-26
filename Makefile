@@ -1,23 +1,23 @@
-.PHONY: setup dev dev-live test lint build e2e fixtures dataset run
+.PHONY: setup dev dev-live test lint build preview e2e fixtures dataset run
 PW_CHROMIUM ?=
 
 setup:            ## install backend + frontend deps
 	uv sync
 	cd frontend && npm ci
 
-dev:              ## backend (timetable only, no quota) on :8000 + vite on :5173
-	@echo "API http://localhost:8000  |  UI http://localhost:5173"
-	LIVE_SOURCE=none uv run uvicorn backend.app.api.main:create_app --factory --reload --port 8000 & \
+dev:              ## static app with hot reload on :5173 (no backend needed)
 	cd frontend && npm run dev
 
-dev-live:         ## same, but RailRadar live overlay (needs RAILRADAR_API_KEY; SPENDS QUOTA)
-	LIVE_SOURCE=railradar uv run uvicorn backend.app.api.main:create_app --factory --reload --port 8000 & \
+dev-live:         ## same as dev; add your RailRadar key on the app's "Live data" tab (SPENDS QUOTA)
 	cd frontend && npm run dev
 
-build:            ## production frontend bundle -> frontend/dist (served by the backend)
+build:            ## static site -> frontend/dist (deploy to any static host)
 	cd frontend && npm run build
 
-run: build        ## single-process production-style run on :8000
+preview: build    ## serve the built static site on :4173
+	cd frontend && npx vite preview --host 127.0.0.1 --port 4173
+
+run: build        ## legacy: serve the build via the Python backend on :8000
 	uv run uvicorn backend.app.api.main:create_app --factory --host 0.0.0.0 --port 8000
 
 test:             ## all offline unit tests (no network, no API key)

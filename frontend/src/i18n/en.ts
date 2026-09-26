@@ -41,7 +41,7 @@ export const en = {
     updated: (s: number, src: string) => `Updated ${s} s ago · via ${src}`,
     scheduledOnly: "Live data unavailable — showing timetable",
     stale: "Live data is stale",
-    liveNotConfigured: "Live tracking is not configured on this server.",
+    liveNotConfigured: "Live tracking is off — add your own RailRadar key under Live data.",
   },
   train: {
     stops: "Stops",
@@ -61,7 +61,26 @@ export const en = {
     mapUnavailable: "Map unavailable",
   },
   board: { title: "Station board", arrivals: "Arrivals", departures: "Departures", terminates: "Terminates here", hours: (n: number) => `Next ${n} h`, refresh: "Refresh" },
-  nav: { home: "Trains", trains: "Find train", board: "Station board" },
+  nav: { home: "Trains", trains: "Find train", board: "Station board", settings: "Live data" },
+  settings: {
+    title: "Live data",
+    intro:
+      "This site is fully static: the timetable is built in and works offline. Live delays are optional — " +
+      "they need a RailRadar API key, which stays in this browser only and is sent only to RailRadar.",
+    apiKey: "RailRadar API key",
+    baseUrl: "Custom API base URL (optional)",
+    baseUrlHelp: "Leave empty for api.railradar.in. Set it to your own proxy if you keep the key server-side.",
+    save: "Save",
+    clear: "Remove key",
+    saved: "Saved. Live data will be used where the provider allows browser access.",
+    cleared: "Key removed. Showing timetable only.",
+    stateOff: "Live data is off (timetable only).",
+    stateOn: "Live data is on.",
+    quota: (used: number, budget: number, state: string) => `Requests this month (this browser): ${used} of ${budget} · budget ${state}`,
+    lastError: (c: string) => `Last live error: ${c}. Showing timetable until it recovers.`,
+    corsNote:
+      "If RailRadar does not allow calls from browsers, live data will fail and the app will keep showing the timetable — it never invents live values.",
+  },
   footer: {
     unofficial: "Unofficial — not affiliated with Indian Railways.",
     disclaimer:

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Footer } from "./components/Common";
+import { Settings } from "./components/Settings";
 import { Home } from "./components/Home";
 import { StationBoard } from "./components/StationBoard";
 import { TrainDetail } from "./components/TrainDetail";
@@ -9,7 +10,7 @@ import { useRoutes } from "./storage";
 
 export type Route =
   | { page: "home" } | { page: "trains" } | { page: "board"; code: string | null }
-  | { page: "train"; number: string };
+  | { page: "train"; number: string } | { page: "settings" };
 
 /** Tiny hash router (no extra dependency). */
 export function parseHash(hash: string): Route {
@@ -17,6 +18,7 @@ export function parseHash(hash: string): Route {
   if (a === "train" && /^\d{5}$/.test(b ?? "")) return { page: "train", number: b };
   if (a === "trains") return { page: "trains" };
   if (a === "station") return { page: "board", code: /^[A-Z0-9]{1,6}$/i.test(b ?? "") ? b.toUpperCase() : null };
+  if (a === "settings") return { page: "settings" };
   if (a === "board") return { page: "board", code: null };
   return { page: "home" };
 }
@@ -40,6 +42,7 @@ export function App() {
         {route.page === "home" && <Home {...routes} />}
         {route.page === "trains" && <TrainSearch />}
         {route.page === "board" && <StationBoard code={route.code} />}
+        {route.page === "settings" && <Settings />}
         {route.page === "train" && <TrainDetail number={route.number} />}
       </main>
       <Footer />
@@ -47,6 +50,7 @@ export function App() {
         <a href="#/" aria-current={tab === "home" ? "page" : undefined}>{en.nav.home}</a>
         <a href="#/trains" aria-current={tab === "trains" ? "page" : undefined}>{en.nav.trains}</a>
         <a href="#/board" aria-current={tab === "board" ? "page" : undefined}>{en.nav.board}</a>
+        <a href="#/settings" aria-current={tab === "settings" ? "page" : undefined}>{en.nav.settings}</a>
       </nav>
     </div>
   );

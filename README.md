@@ -7,24 +7,31 @@ both ends, open a train for its stop timeline and map, or browse a station board
 ## What works today (honestly)
 - **Timetable mode (default, free, offline):** 130 Tamil Nadu EMU/MEMU trains from the CC0 datameet dataset (~2016).
   Every ETA is labelled *Scheduled*. No live data is claimed. Run days are unknown (assumed daily).
-- **Live overlay (opt-in):** set `LIVE_SOURCE=railradar` + `RAILRADAR_API_KEY`. Delays are then shown as
+- **Fully static:** the whole app (timetable, ETA engine, journeys, boards, map) runs in the browser — no server
+  needed (ADR 0003). `make build` produces `frontend/dist`, deployable to any static host.
+- **Live overlay (opt-in, per visitor):** paste your own RailRadar key on the *Live data* tab (kept in your browser
+  only; never in the build). Delays are then shown as
   *Live* (recorded/reported) or *Estimated* (last delay carried forward). **The RailRadar mapping is unverified**
   against real responses — run Phase 0 first (`docs/data-source-findings.md`).
-- Quota-aware and board-first: one shared station-board call per station per 75 s covers all trains (≈ 48 calls/hour while a page is open ⇒ ~20 h/month on the free tier — an estimate). Budget guard, single-flight cache, circuit breaker, stale-serving, graceful degradation to timetable.
+- Quota-aware and board-first (in the browser, per visitor): one station-board call per station per 75 s covers all trains (≈ 48 calls/hour while a page is open ⇒ ~20 h/month on the free tier — an estimate). Budget guard, single-flight cache, circuit breaker, stale-serving, graceful degradation to timetable.
 
 ## Quick start
 ```bash
 make setup              # uv sync + npm ci
-make dev                # API :8000 (timetable only) + UI http://localhost:5173
+make dev                # UI only, http://localhost:5173 (no backend needed)
 make test               # backend + frontend unit tests (offline, no key)
-make run                # production-style: build the PWA and serve everything from :8000
-docker compose up --build   # same, containerised (single worker — see ADR 0001)
+make build              # static site -> frontend/dist  (upload this folder to any static host)
+make preview            # serve the built static site locally on :4173
 ```
+Deploying: publish the contents of `frontend/dist/` to GitHub Pages / Cloudflare Pages / Netlify / any web server.
+Note: Google Forms cannot host a site; use one of those (or embed the hosted URL in Google Sites).
+The Python backend (`backend/`, `docker compose`) is kept as the reference implementation and for Phase 0 tooling;
+the site no longer calls it.
 Rebuild the timetable extract (optional): download `stations.json`, `trains.json`, `schedules.json` from
 `github.com/datameet/railways` into `data/open/`, then `make dataset`.
 
 ## Layout
-`backend/app/{eta,providers,services,api,domain}` · `frontend/src` · `scripts/` · `docs/` · `tests/fixtures/`.
+`frontend/src/local` (browser ETA engine + services) · `backend/app/{eta,providers,services,api,domain}` (reference) · `frontend/src` · `scripts/` · `docs/` · `tests/fixtures/`.
 The ETA engine (`eta/`) is pure (no I/O, `now` is a parameter). Providers never leak vendor JSON.
 
 ## Quality gates

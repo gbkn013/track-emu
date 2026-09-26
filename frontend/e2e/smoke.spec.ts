@@ -42,3 +42,24 @@ test("invalid train number falls back to home; unknown station shows an error wi
   await expect(page.getByRole("alert")).toContainText("unknown station");
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
 });
+
+test("optional live key: sent only to RailRadar; a blocked call degrades to the timetable", async ({ page }) => {
+  const seen: string[] = [];
+  await page.route("https://api.railradar.in/**", (route) => {
+    seen.push(route.request().headers()["authorization"] ?? "");
+    return route.abort();
+  });
+  await page.goto("/#/settings");
+  await expect(page.getByRole("status").first()).toContainText("Live data is off");
+  await page.getByLabel("RailRadar API key").fill("test-key");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status").first()).toContainText("Live data is on");
+
+  await page.goto("/#/station/TBM");
+  await page.getByRole("tab", { name: "Arrivals" }).waitFor();
+  await expect.poll(() => seen.length).toBeGreaterThan(0);
+  expect(seen[0]).toBe("Bearer test-key");
+  // Live failed: banner says timetable, nothing is badged live.
+  await expect(page.getByRole("status").first()).toContainText("Live data unavailable — showing timetable");
+  await expect(page.getByText(/^● Live/)).toHaveCount(0);
+});

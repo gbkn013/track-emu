@@ -1,5 +1,12 @@
-export type DataMode = "live" | "partial" | "scheduled";
-export type EtaSource = "actual" | "live_reported" | "propagated" | "scheduled";
+import { loadCatalogue } from "./local/catalogue";
+import { config } from "./local/config";
+import { ApiError } from "./local/errors";
+import { RailRadarClient } from "./local/railradar";
+import { QueryService } from "./local/service";
+import { effectiveLive, loadLiveSettings, onLiveSettingsChange } from "./local/settings";
+
+export type { DataMode, EtaSource } from "./local/domain";
+import type { DataMode, EtaSource } from "./local/domain";
 
 export interface Meta {
   data_mode: DataMode;
@@ -33,34 +40,47 @@ export interface TrainLive extends TrainBrief, Meta {
   start_date: string; position: Position; stops: StopRow[]; exceptions: { type: string }[];
 }
 export interface BoardRow {
-  number: string; name: string; to: string; to_name: string; is_terminus: boolean;
+  number: string; name: string; start_date: string; to: string; to_name: string; is_terminus: boolean;
   scheduled: string; eta: string; delay_min: number | null; eta_source: EtaSource;
   platform: number | null; state: string;
 }
 export interface BoardResponse extends Meta { code: string; name: string; hours: number; trains: BoardRow[] }
 export interface Line { type: "LineString"; coordinates: [number, number][] }
 
-export class ApiError extends Error {
-  constructor(public status: number, public code: string, message: string) { super(message); }
+export { ApiError } from "./local/errors";
+
+// The "API" is now an in-browser service over the bundled timetable (no server; see
+// docs/decisions/0003-static-site.md). Method names and response shapes are unchanged.
+let svcPromise: Promise<QueryService> | null = null;
+
+function applyLive(s: QueryService) {
+  const e = effectiveLive(loadLiveSettings());
+  s.live = e.enabled ? new RailRadarClient(e.baseUrl, e.apiKey, (ep, st, ms) => s.ledger.record(ep, st, ms)) : null;
+  s.cache.clear();
 }
 
-async function get<T>(path: string): Promise<T> {
-  const r = await fetch(path);
-  if (!r.ok) {
-    let e = { code: "http_error", message: `HTTP ${r.status}` };
-    try { e = (await r.json()).error ?? e; } catch { /* non-JSON error body */ }
-    throw new ApiError(r.status, e.code, e.message);
-  }
-  return r.json() as Promise<T>;
+export function service(): Promise<QueryService> {
+  svcPromise ??= loadCatalogue().then((cat) => {
+    const s = new QueryService(cat);
+    applyLive(s);
+    onLiveSettingsChange(() => applyLive(s));
+    return s;
+  });
+  return svcPromise;
 }
 
 export const api = {
-  stations: (q: string) => get<{ stations: Station[] }>(`/api/v1/stations?q=${encodeURIComponent(q)}`),
-  journeys: (from: string, to: string, showDeparted: boolean) =>
-    get<JourneysResponse>(`/api/v1/journeys?from=${from}&to=${to}&limit=15${showDeparted ? "&show_departed=true" : ""}`),
-  trains: (q: string) => get<{ trains: TrainBrief[] }>(`/api/v1/trains?q=${encodeURIComponent(q)}`),
-  trainLive: (n: string) => get<TrainLive>(`/api/v1/trains/${n}/live`),
-  route: (n: string) => get<Line>(`/api/v1/trains/${n}/route`),
-  config: () => get<{ tile_source_url: string | null }>(`/api/v1/meta/config`),
-  board: (code: string, hours: number) => get<BoardResponse>(`/api/v1/stations/${code}/board?hours=${hours}`),
+  stations: async (q: string) => (await service()).searchStations(q),
+  journeys: async (from: string, to: string, showDeparted: boolean): Promise<JourneysResponse> => {
+    const s = await service();
+    const a = s.checkStation(from), b = s.checkStation(to);
+    if (a === b) throw new ApiError(422, "same_station", "from and to must differ");
+    return s.journeys(a, b, Date.now(), { limit: 15, showDeparted });
+  },
+  trains: async (q: string) => (await service()).searchTrains(q),
+  trainLive: async (n: string) => (await service()).trainLive(n, Date.now()),
+  route: async (n: string): Promise<Line> => (await service()).routeGeometry(n),
+  config: async () => ({ tile_source_url: config.tileSourceUrl }),
+  board: async (code: string, hours: number) => (await service()).board(code, Date.now(), hours),
+  status: async () => (await service()).status(),
 };
