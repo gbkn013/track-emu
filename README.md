@@ -25,6 +25,11 @@ make preview            # serve the built static site locally on :4173
 ```
 Deploying: publish the contents of `frontend/dist/` to GitHub Pages / Cloudflare Pages / Netlify / any web server.
 Note: Google Forms cannot host a site; use one of those (or embed the hosted URL in Google Sites).
+
+**GitHub Pages (automated):** `.github/workflows/deploy-pages.yml` builds `frontend/dist` and deploys it on every push
+to `main`. One-time setup on GitHub: repo *Settings → Pages → Source* = "GitHub Actions". After the first successful
+run, the site is live at `https://<user>.github.io/<repo>/` (uses relative asset paths + hash routing, so it works
+under a subpath).
 The Python backend (`backend/`, `docker compose`) is kept as the reference implementation and for Phase 0 tooling;
 the site no longer calls it.
 Rebuild the timetable extract (optional): download `stations.json`, `trains.json`, `schedules.json` from
